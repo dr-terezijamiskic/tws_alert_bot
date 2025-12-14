@@ -1,212 +1,211 @@
-
-[README.md](https://github.com/user-attachments/files/25806071/README.md)
 # Exit-First Trading Copilot
 
-Manual-first discipline tool for exits and risk reduction. Enforces pre-trade contracts, triggers alarms on invalidation, and tracks rule adherence.
-## Core Idea
+## Read this before trading (why this app exists)
 
-Most trading tools try to optimize entries.
+This app is my system, externalized.
 
-This project explores whether software can enforce trading discipline by acting as a behavioral guardrail during a trade.
+It does NOT tell me what to think.
+It only reminds me what I already decided when I was calm.
 
-## Philosophy
+### What this app is
+- A discipline tool for exits and risk reduction
+- A loud alarm only when my invalidation is touched
+- A journal that shows me whether I followed my own rules
 
-### What This Is
-A discipline enforcement system that:
-- Remembers what you decided when calm
-- Alarms loudly when invalidation is touched
-- Tracks whether you followed your own rules
-- Never makes decisions for you
-
-### What This Is Not
+### What this app is NOT
 - Not financial advice
 - Not an auto-trading bot
-- Not predictive or analytical
-- Not trying to close trades early
-- Not allowed to force exits (except invalidation alarm)
+- Not a “close early” machine
+- Not allowed to force exits except on invalidation
 
-### Core Principles
-1. **Server-side authority**: Rules engine makes all decisions. UI reacts.
-2. **Pure reactor UI**: Client never calculates status. Only displays what server decides.
-3. **Manual-first**: Every action requires user confirmation. No automation.
-4. **Centralized rules**: All trade logic lives in `lib/rulesEngine.ts`.
-5. **Awareness, not prevention**: Friction and logging, never blocking.
+## My Rule Cards (v1)
 
-## Decision Logic
+### Rule 1 — Invalidation = Exit (non-negotiable)
+If price touches my invalidation level, my setup is broken.
+I exit immediately. No waiting.
 
-### EXIT_NOW (Loud, Red, Escalating)
-Triggered when price touches invalidation level:
-- **LONG**: `price <= invalidationPrice`
-- **SHORT**: `price >= invalidationPrice`
+### Rule 2 — Chop = Reduce 50% (optional, quiet)
+If price is flat / stuck / choppy and not expanding, reducing 50% is an option.
 
-**Behavior:**
-- Status changes to `EXIT_NOW`
-- 880Hz alarm plays every 2 seconds
-- Red banner displays: "EXIT NOW - INVALIDATION TRIGGERED"
-- Only two buttons: EXIT or OVERRIDE
-- 60-second escalation timer starts
-- If ignored for 60 seconds: logs `RULE_VIOLATION` action (once per episode)
-- Re-triggers if invalidation hit again after override
+### Rule 3 — No follow-through = Reduce 50% (optional, quiet)
+If enough candles pass and price makes no attempt to move in my direction,
+reducing 50% is an option.
 
-**Implementation:**
-- `lib/rulesEngine.ts`: `checkInvalidation()`
-- Returns `{ status: 'EXIT_NOW', playSound: true, escalate: true }`
-- `exitNowTriggeredAt` timestamp set on first trigger
-- Cleared when returning to ACTIVE (allows fresh episodes)
+### Rule 4 — Uncertainty = Reduce 50% (optional, quiet)
+If I feel unsure about structure or direction, reducing 50% is an option.
 
-### SUGGEST_REDUCE (Quiet, Yellow, Optional)
-Suggested when conditions indicate uncertainty:
-- Chop detected (price flat/sideways)
-- Unsure about direction
-- No follow-through after N updates
+### Rule 5 — Capital protection is a win
+Reducing risk or exiting early is doing my job.
+Preserving capital matters more than being right.
 
-**No-Follow-Through Thresholds:**
-- **0DTE trades** (`is0DTE = true`): 3 price updates
-- **Regular trades**: 4 price updates
+## Alarm rules
+- Sound + escalation happen ONLY on `EXIT_NOW` (invalidation touched).
+- Reduce suggestions are ALWAYS quiet (visual only).
+- Trades never auto-close. I decide.
 
-**Anti-Nagging:**
-- Triggers exactly once at threshold (`updateCount === threshold`)
-- Never triggers again for same reason
-- Changed from `>=` to `===` to prevent repeated suggestions
+A manual-first trading discipline tool built with Next.js 14, TypeScript, and SQLite. This MVP helps traders enforce their exit rules through a pre-trade contract system, real-time invalidation alerts, and comprehensive trade journaling.
 
-**Behavior:**
-- Yellow banner displays with reason
-- "REDUCE 50%" button appears
-- No alarm, no escalation, no timer
-- User can ignore indefinitely
+## Features
 
-**Implementation:**
-- `lib/rulesEngine.ts`: `evaluateRules()`
-- Returns `{ status: 'SUGGEST_REDUCE', playSound: false }`
-- Conditional logic checks `chop`, `unsure`, and `updateCount`
+- **Pre-Trade Contract**: Define your setup, invalidation price, and commit before entering
+- **Live Trade Monitor**: Real-time price updates with automatic invalidation detection
+- **Exit-Now Alarm**: Loud, repeating alerts when invalidation price is touched
+- **Override System**: Requires written justification to ignore invalidation signals
+- **Reduce Suggestions**: Quiet prompts for choppy/uncertain price action
+- **Trading Journal**: Review all trades with key discipline metrics
+- **Offline-First**: Works completely locally with SQLite persistence
 
-## Workflow
+## Tech Stack
 
-### 1. Pre-Trade Contract (`/new`)
-1. Check for existing ACTIVE trades
-2. If found, show modal: "Active Trade Detected"
-   - Buttons: "Continue Anyway" | "Cancel"
-   - If continued, logs `MULTI_TRADE_ACK` action
-3. Fill form: ticker, direction, setup, timeframe, invalidation price, 0DTE flag
-4. Submit → creates trade with status `ACTIVE`
-5. Redirect to `/trade/[id]`
+- **Framework**: Next.js 14+ (App Router)
+- **Language**: TypeScript
+- **Database**: SQLite with better-sqlite3
+- **Styling**: Tailwind CSS (dark theme, big typography)
+- **Runtime**: Node.js
 
-**Multi-Trade Friction:**
-- Awareness only, not blocking
-- Modal appears on page load if active trade exists
-- No auto-close of existing trades
-- Acknowledgment logged for review
+## Installation
 
-### 2. Live Monitor (`/trade/[id]`)
-**Active Trade:**
-- Enter price updates with flags: chop, unsure, inProfit
-- Server evaluates rules, returns decision
-- UI displays banners/buttons based on server response
-- Manual "EXIT TRADE" button always visible (voluntary exit)
+### Prerequisites
 
-**EXIT_NOW Triggered:**
-- Red banner, alarm starts
-- Escalation timer counts up
-- At 60 seconds: logs `RULE_VIOLATION` (once)
-- Two actions: EXIT or OVERRIDE
+- Node.js 18+ installed
+- npm or yarn package manager
 
-**SUGGEST_REDUCE Displayed:**
-- Yellow banner with reason
-- "REDUCE 50%" button
-- Can be ignored indefinitely
+### Setup Steps
 
-**Voluntary Exit:**
-- "EXIT TRADE" button visible when `status === 'ACTIVE'`
-- No confirmation, no alarm, no override logic
-- Logs EXIT action, sets status to CLOSED, redirects to `/review`
+1. **Navigate to the project directory**:
+   ```bash
+   cd exit-trading-copilot
+   ```
 
-### 3. Review (`/review`)
-Displays metrics:
-- Total trades
-- Avg exit delay (EXIT_NOW → EXIT action)
-- EXIT_NOW ignored >60s (percentage)
-- Rule violations (count)
-- Avg reduces per trade
-- Avg hold time
+2. **Install dependencies** (if not already installed):
+   ```bash
+   npm install
+   ```
 
-Shows trade journal table with all historical trades.
+3. **Start the development server**:
+   ```bash
+   npm run dev
+   ```
 
-## Rules Engine
+4. **Open your browser**:
+   Navigate to [http://localhost:3000](http://localhost:3000)
 
-**Location:** `lib/rulesEngine.ts`
+The database will be automatically created in the `data/` directory on first run.
 
-**Function:** `evaluateRules(trade, priceUpdate, updateCount)`
+## Usage Guide
 
-**Returns:** `RulesEngineOutput`
-```typescript
-{
-  status: 'EXIT_NOW' | 'SUGGEST_REDUCE' | 'CONTINUE',
-  tradeStatus: 'ACTIVE' | 'EXIT_NOW',
-  reason: string,
-  uiHints: {
-    playSound: boolean,
-    escalate: boolean
-  }
-}
+### 1. Creating a New Trade (`/new`)
+
+1. Navigate to "New Trade" in the navigation bar
+2. Fill out the pre-trade contract:
+   - **Ticker**: Stock/asset symbol (e.g., SPY, AAPL)
+   - **Direction**: LONG (call) or SHORT (put)
+   - **Setup/Thesis**: Why you're taking this trade
+   - **Timeframe**: Chart timeframe (5m, 15m, 1h, etc.)
+   - **Invalidation Price**: Your stop loss level
+   - **Notes**: Optional additional context
+3. Click **I'M IN** to create the trade
+4. You'll be immediately redirected to the live monitor
+
+### 2. Monitoring an Active Trade (`/trade/[id]`)
+
+#### Normal Monitoring:
+- Enter current price in the "Price Update" section
+- Check boxes for current conditions:
+  - **Chop**: Choppy, sideways price action
+  - **Unsure**: Uncertain about price direction
+  - **In Profit**: Currently profitable
+- Click "Update Price"
+
+#### When Chop/Unsure is Detected:
+- A quiet yellow suggestion appears: "Consider reducing position"
+- Click **REDUCE 50%** to log a partial exit (for journaling)
+
+#### When Invalidation is Triggered:
+1. If price touches invalidation level:
+   - **LONG**: price ≤ invalidation price
+   - **SHORT**: price ≥ invalidation price
+2. Trade status changes to **EXIT_NOW**
+3. Loud, repeating alarm starts (880Hz tone every 2 seconds)
+4. Screen shows red alert banner
+5. Only two buttons appear:
+   - **EXIT**: Close the trade and stop the alarm
+   - **OVERRIDE**: Requires one-sentence justification
+
+#### Overriding Invalidation:
+1. Click **OVERRIDE**
+2. Enter a clear reason (e.g., "false breakout, support held")
+3. Click "Confirm Override"
+4. Trade returns to ACTIVE status, alarm stops
+5. Override is logged for later review
+
+#### Exiting a Trade:
+1. Click **EXIT** button
+2. Trade status changes to CLOSED
+3. Redirected to review page
+4. Trade duration and metrics are calculated
+
+### 3. Reviewing Performance (`/review`)
+
+The review page shows:
+
+#### Metrics Dashboard:
+- **Total Trades**: Number of trades created
+- **Avg Exit Delay**: Average time from EXIT_NOW trigger to EXIT action
+- **EXIT_NOW Ignored >60s**: Percentage of invalidations ignored for over 60 seconds
+- **Rule Violations**: Count of invalidations ignored beyond 60 seconds
+- **Avg Reduces/Trade**: Average number of REDUCE actions per trade
+- **Avg Hold Time**: Average duration trades are held (in minutes)
+
+#### Trade Journal Table:
+- List of all trades with key details
+- Click "Monitor" to return to active trades
+- Click "View" to see closed trade details
+
+## Project Structure
+
+```
+exit-trading-copilot/
+├── app/
+│   ├── layout.tsx              # Root layout with nav
+│   ├── page.tsx                # Home (redirects to /review)
+│   ├── globals.css             # Global styles
+│   ├── new/
+│   │   └── page.tsx           # Pre-Trade Contract form
+│   ├── trade/
+│   │   └── [id]/
+│   │       └── page.tsx       # Live Monitor with alarm logic
+│   ├── review/
+│   │   └── page.tsx           # Journal and metrics
+│   └── api/
+│       ├── trades/            # Trade CRUD endpoints
+│       ├── price-updates/     # Price update endpoint
+│       ├── actions/           # Action logging endpoint
+│       └── metrics/           # Metrics calculation endpoint
+│
+├── lib/
+│   ├── db/
+│   │   ├── index.ts           # Database connection
+│   │   ├── schema.ts          # Table schemas
+│   │   └── queries.ts         # Query functions
+│   └── types.ts               # TypeScript type definitions
+│
+├── components/
+│   └── nav.tsx                # Navigation component
+│
+├── data/
+│   └── trades.db              # SQLite database (auto-created)
+│
+├── package.json
+├── tsconfig.json
+├── tailwind.config.ts
+├── next.config.js
+└── README.md
 ```
 
-**Decision Hierarchy:**
-1. Check invalidation → EXIT_NOW (immediate)
-2. Check chop → SUGGEST_REDUCE (quiet)
-3. Check unsure → SUGGEST_REDUCE (quiet)
-4. Check no follow-through → SUGGEST_REDUCE (quiet)
-5. Default → CONTINUE
+## Database Schema
 
-**No Trade-Specific Overrides:**
-- No SPY-specific logic
-- No ticker-based thresholds
-- Uses `is0DTE` boolean field for risk assessment
-
-## Color Semantics
-
-**STRICT LIMITS:**
-- **Red** (`bg-red-600`): ONLY for EXIT_NOW banner and EXIT button
-- **Yellow** (`bg-yellow-500`): ONLY for SUGGEST_REDUCE banner
-- **Everything else**: Monochrome (grays, whites, blacks)
-
-**Not Allowed:**
-- No blue, green, purple anywhere
-- No colored direction buttons
-- No colored nav links
-- No colored badges (except EXIT_NOW/SUGGEST_REDUCE contexts)
-
-**Implementation:**
-- `app/trade/[id]/page.tsx`: Class constants
-  - `DANGER_CLASSES = 'bg-red-600 border-red-600 text-white'`
-  - `WARNING_CLASSES = 'bg-yellow-500 border-yellow-500 text-black'`
-
-## Architecture
-
-### Tech Stack
-- **Next.js 14+** (App Router)
-- **TypeScript**
-- **SQLite** (better-sqlite3)
-- **Tailwind CSS v4** (utility-based, no config themes)
-
-### Key Patterns
-**Server-Side Authority:**
-- `/api/price-updates` delegates to rules engine
-- Returns decision to client
-- Client stores and displays, never calculates
-
-**Pure Reactor UI:**
-- `lastDecision` state holds server response
-- All banners/buttons conditional on `lastDecision.status`
-- No client-side business logic
-
-**Centralized Rules:**
-- `lib/rulesEngine.ts` is single source of truth
-- API routes are thin wrappers
-- Never duplicated logic in UI
-
-### Database Schema
-
-**trades:**
+### `trades` table:
 ```sql
 id                  INTEGER PRIMARY KEY
 createdAt           TEXT (ISO datetime)
@@ -219,272 +218,114 @@ entryTime           TEXT (ISO datetime)
 status              TEXT ('ACTIVE' | 'EXIT_NOW' | 'CLOSED')
 closedAt            TEXT (nullable)
 notes               TEXT (nullable)
-exitNowTriggeredAt  TEXT (nullable, first EXIT_NOW trigger)
-is0DTE              INTEGER (0/1 boolean)
+exitNowTriggeredAt  TEXT (nullable, tracks first EXIT_NOW trigger)
 ```
 
-**price_updates:**
+### `price_updates` table:
 ```sql
 id          INTEGER PRIMARY KEY
-tradeId     INTEGER (FK)
+tradeId     INTEGER (foreign key)
 time        TEXT (ISO datetime)
 price       REAL
-chop        INTEGER (0/1)
-unsure      INTEGER (0/1)
-inProfit    INTEGER (0/1)
+chop        INTEGER (0/1 boolean)
+unsure      INTEGER (0/1 boolean)
+inProfit    INTEGER (0/1 boolean)
 statusAfter TEXT ('ACTIVE' | 'EXIT_NOW' | 'CLOSED')
 reason      TEXT (nullable)
 ```
 
-**actions:**
+### `actions` table:
 ```sql
 id       INTEGER PRIMARY KEY
-tradeId  INTEGER (FK)
+tradeId  INTEGER (foreign key)
 time     TEXT (ISO datetime)
-type     TEXT ('EXIT' | 'REDUCE' | 'NOTE' | 'OVERRIDE' | 'RULE_VIOLATION' | 'MULTI_TRADE_ACK')
-payload  TEXT (JSON string)
+type     TEXT ('EXIT' | 'REDUCE' | 'NOTE' | 'OVERRIDE')
+payload  TEXT (JSON string with action details)
 ```
-
-**ActionPayload Schema:**
-```typescript
-{
-  reason?: string;        // OVERRIDE, RULE_VIOLATION
-  amount?: string;        // REDUCE
-  note?: string;          // NOTE
-  seconds?: number;       // RULE_VIOLATION (delay time)
-  tradeId?: number;       // MULTI_TRADE_ACK
-  acknowledged?: boolean; // MULTI_TRADE_ACK
-}
-```
-
-## File Structure
-
-```
-app/
-├── layout.tsx              # Root layout, nav
-├── page.tsx                # Home (→ /review)
-├── globals.css             # Tailwind, monochrome theme
-├── new/page.tsx            # Pre-trade contract, multi-trade warning
-├── trade/[id]/page.tsx     # Live monitor, alarm, escalation
-├── review/page.tsx         # Metrics, journal
-└── api/
-    ├── trades/             # CRUD
-    ├── price-updates/      # Rules engine delegation
-    ├── actions/            # Action logging
-    └── metrics/            # Performance calculations
-
-lib/
-├── db/
-│   ├── index.ts           # Connection
-│   ├── schema.ts          # Table definitions
-│   └── queries.ts         # CRUD functions
-├── rulesEngine.ts         # Decision logic (SERVER AUTHORITY)
-└── types.ts               # TypeScript definitions
-
-data/
-└── trades.db              # SQLite (auto-created)
-```
-
-## Intentionally NOT Implemented
-
-**No Auto-Trading:**
-- No automatic exits
-- No automatic position sizing
-- No automatic entry signals
-
-**No Analysis:**
-- No charts or visualizations
-- No P&L tracking
-- No win rate calculations
-- No pattern detection
-- No indicators or technical analysis
-
-**No Multi-Asset:**
-- One trade at a time (recommended)
-- Multi-trade is allowed but warned against
-- No portfolio-level logic
-
-**No External Data:**
-- No live price feeds
-- No API integrations
-- No market data services
-- Manual price entry only
-
-**No Customization:**
-- Fixed alarm sound (880Hz)
-- Fixed escalation threshold (60s)
-- Fixed reduce amount (50%)
-- Fixed thresholds (3/4 updates)
-
-**No Export/Import:**
-- No CSV export
-- No trade backup
-- No cloud sync
-- Local-only database
-
-**No Authentication:**
-- Single-user system
-- No login
-- No permissions
-
-**No Mobile Optimization:**
-- Desktop-first design
-- Large typography assumes desktop screens
 
 ## Key Behaviors
 
-### EXIT_NOW Re-Trigger After Override
-**Problem:** After override, subsequent invalidation touches wouldn't re-trigger EXIT_NOW.
+### Invalidation Logic:
+- **LONG trades**: EXIT_NOW triggers when `price <= invalidationPrice`
+- **SHORT trades**: EXIT_NOW triggers when `price >= invalidationPrice`
 
-**Solution:**
-- When status becomes ACTIVE, clear `exitNowTriggeredAt`
-- When EXIT_NOW triggers, always update timestamp (no NULL check)
-- Allows fresh EXIT_NOW episodes after override
+### Alarm System:
+- Plays 880Hz sine wave tone for 0.5 seconds
+- Repeats every 2 seconds while in EXIT_NOW status
+- Uses Web Audio API (works in all modern browsers)
+- Stops when trade is exited or overridden
 
-**Implementation:** `lib/db/queries.ts` - `updateTradeStatus()`
+### Metrics Calculations:
+- **Avg Exit Delay**: Time difference between `exitNowTriggeredAt` and first EXIT action
+- **EXIT_NOW Ignored >60s**: Percentage of trades where delay > 60 seconds
+- **Rule Violations**: Count of delays > 60 seconds
+- **Avg Reduces/Trade**: Total REDUCE actions / total trades
+- **Avg Hold Time**: Average of `(closedAt - entryTime)` for closed trades
 
-### RULE_VIOLATION Logging
-**Behavior:**
-- Logs exactly once per EXIT_NOW episode
-- Triggered 60 seconds after EXIT_NOW
-- Includes delay time in payload
-- Cleared when status changes (prevents double-logging)
+## Development Commands
 
-**Implementation:**
-- `app/trade/[id]/page.tsx` - `useEffect` with escalation timer
-- `violationLogged` state prevents duplicates
-
-### Anti-Nagging for SUGGEST_REDUCE
-**Problem:** Using `>=` threshold caused repeated suggestions.
-
-**Solution:** Changed to `===` exact match
-- Triggers once at threshold
-- Never repeats for same reason
-
-**Implementation:** `lib/rulesEngine.ts` - threshold checks
-
-### Missing Trade Redirect
-**Behavior:**
-- If `/trade/[id]` receives 404, redirect to `/review`
-- Prevents broken page state
-- Handles database recreation gracefully
-
-**Implementation:** `app/trade/[id]/page.tsx` - `loadTrade()` error handling
-
-## Development
-
-**Install:**
 ```bash
-npm install
-```
-
-**Run:**
-```bash
+# Start development server
 npm run dev
-# → http://localhost:3000
-```
 
-**Reset Database:**
-```bash
-rm -f data/trades.db
-# Recreates on next run
-```
-
-**Build:**
-```bash
+# Build for production
 npm run build
+
+# Start production server
 npm start
+
+# Run linter
+npm run lint
 ```
 
-## Version Control
+## Database Management
 
-**Initialized:** 2025-12-13
+The SQLite database is stored in `data/trades.db` and is automatically created on first run.
 
-**Commits:**
-1. Initial implementation (MVP baseline)
-2. Multi-trade awareness + error handling
+**To reset the database** (delete all trades):
+```bash
+rm data/trades.db
+```
 
-**Branch:** main
+The database will be recreated with empty tables on next run.
 
-## Testing Checklist
+## Browser Requirements
 
-**EXIT_NOW Flow:**
-- [ ] Create trade
-- [ ] Enter price at invalidation
-- [ ] Verify alarm plays
-- [ ] Verify red banner
-- [ ] Wait 60 seconds
-- [ ] Verify RULE_VIOLATION logged
-- [ ] Override with reason
-- [ ] Verify alarm stops
-- [ ] Hit invalidation again
-- [ ] Verify EXIT_NOW re-triggers
+- Modern browser with Web Audio API support (Chrome, Firefox, Safari, Edge)
+- JavaScript enabled
+- LocalStorage access (for Next.js)
 
-**SUGGEST_REDUCE Flow:**
-- [ ] Create trade
-- [ ] Enter 3-4 updates with chop/unsure
-- [ ] Verify yellow banner appears
-- [ ] Verify no alarm
-- [ ] Click REDUCE
-- [ ] Verify logged in timeline
+## Design Philosophy
 
-**Manual Exit:**
-- [ ] Create trade
-- [ ] Click "EXIT TRADE"
-- [ ] Verify no alarm
-- [ ] Verify redirected to /review
-- [ ] Verify status is CLOSED
+This tool is designed to enforce **trading discipline** through:
 
-**Multi-Trade Warning:**
-- [ ] Create first trade
-- [ ] Navigate to /new
-- [ ] Verify modal appears
-- [ ] Click "Continue Anyway"
-- [ ] Create second trade
-- [ ] Verify MULTI_TRADE_ACK in timeline
+1. **Pre-commitment**: Define your plan before entering
+2. **Objective invalidation**: No wiggle room on stop loss
+3. **Forced accountability**: Override requires written justification
+4. **Immediate feedback**: Loud alarm creates urgency
+5. **Performance tracking**: Metrics reveal discipline patterns
 
-## Notes to Future Self
+The UI is intentionally **minimal and bold** to reduce cognitive load during high-stress trading situations.
 
-**If EXIT_NOW stops working:**
-- Check `lib/rulesEngine.ts` - `checkInvalidation()`
-- Verify price comparison logic (LONG: <=, SHORT: >=)
-- Check `exitNowTriggeredAt` is being set in `updateTradeStatus()`
+## Future Enhancements (Not in MVP)
 
-**If alarm won't stop:**
-- Check `trade.status` state update
-- Verify `useEffect` cleanup runs on unmount
-- Check `stopAlarm()` is called in both EXIT and OVERRIDE handlers
+- Export trades to CSV
+- Charts for price history
+- P&L tracking
+- Custom alarm sounds
+- Multiple position sizes
+- Trade tags/categories
+- Win rate calculations
+- Automatic backup system
 
-**If SUGGEST_REDUCE repeats:**
-- Verify `===` threshold check (not `>=`)
-- Check `updateCount` from price_updates query
-- Verify `is0DTE` boolean is correct
+## License
 
-**If database schema changes:**
-- Delete `data/trades.db`
-- Restart dev server
-- Schema auto-recreates from `lib/db/schema.ts`
+MIT
 
-**If colors disappear:**
-- Tailwind v4 uses utility classes directly
-- No `@theme` block needed in globals.css
-- Check `DANGER_CLASSES` and `WARNING_CLASSES` constants
+## Support
 
+For issues or questions, please review the code structure and inline comments. All core logic is documented in the source files.
 
-## Project Structure
+---
 
-/app
-- trade/[id]/page.tsx – Active trade management interface
-- review/page.tsx – Trade history and review
-
-/api
-- /price-updates – Logs price updates and runs rules engine
-- /actions – Logs user actions (exit, reduce, override)
-- /trades – Trade creation and state management
-
-/lib
-- rulesEngine.ts – Core decision logic
-- types.ts – Shared TypeScript types
-
-/database
-- SQLite database for trades, price updates, and actions
+**Remember**: This tool enforces discipline, but you must execute the exits yourself. No automation can replace proper risk management and emotional control.
